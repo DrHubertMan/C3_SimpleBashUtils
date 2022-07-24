@@ -1,154 +1,122 @@
 #include"s21_grep.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
+    struct opt_grep pars;
     int exit_flag = 0;
-    if (argc > 1) {
-        struct opt_grep pars;
-        char *template = malloc(1024);
-        int a = parser(argc, argv, &pars, template);
-        if (a == 0) {
-            file_open(argc, argv, &pars, template);
+    char template[buff_size] = {0};
+    memset(&pars, 0, sizeof(pars));
+    exit_flag = parser(argc, argv, &pars, template);
+    if ((argc >= 3) && (exit_flag != 1)) {
+        grep(&pars, argc, argv, template);
+    }
+    return exit_flag;
+}
+
+
+int parser(int argc, char *argv[], struct opt_grep *pars, char *template) {
+    int i = 0, result = 0;
+    while ((i = getopt(argc, argv, "e:ivclnhsf:o")) != -1) {
+        if (i == 'e') {
+            pars->opt_e = 1;
+            snprintf(template, buff_size, optarg);
+        } else if (i == 'i') {
+            pars->opt_i = 1;
+        } else if (i == 'v') {
+            pars->opt_v = 1;
+        } else if (i == 'c') {
+            pars->opt_c = 1;
+        } else if (i == 'l') {
+            pars->opt_l = 1;
+        } else if (i == 'n') {
+            pars->opt_n = 1;
+        } else if (i == 'h') {
+            pars->opt_h = 1;
+        } else if (i == 's') {
+            pars->opt_s = 1;
+        } else if (i == 'f') {
+            pars->opt_f = 1;
+            snprintf(template, buff_size, optarg);
+        } else if (i == 'o') {
+            pars->opt_o = 1;
         } else {
-            exit_flag = 1;
+            result = 1;
         }
-        free(template);
     }
-    return exit_flag;
+    return result;
 }
 
-int parser(int count, char **pars_str, struct opt_grep *pars, char *template) {
-    int exit_flag = 0, helper = 0;
-    pars -> opt_e = 0;
-    pars -> opt_i = 0;
-    pars -> opt_v = 0;
-    pars -> opt_c = 0;
-    pars -> opt_l = 0;
-    pars -> opt_n = 0;
-    pars -> file_n = 0;
-    for (int i = 1; i < count; i++) {
-        int len_argv = strlen(pars_str[i]);
-        for (int j = 0; j < len_argv; j++) {
-            if (pars_str[i][j] == '-') {
-                if (pars_str[i][j+1] == 'e') {
-                    pars -> opt_e = 1;
-                    memset(pars_str[i], 0, 1);
-                    strcat(template, pars_str[i+1]);
-                    memset(pars_str[i+1], 0, 1);
-                    continue;
-                } else if (pars_str[i][j+1] == 'i') {
-                    pars -> opt_i = 1;
-                    memset(pars_str[i], 0, 1);
-                    continue;
-                } else if (pars_str[i][j+1] == 'v') {
-                    pars -> opt_v = 1;
-                    memset(pars_str[i], 0, 1);
-                    continue;
-                } else if (pars_str[i][j+1] == 'c') {
-                    pars -> opt_c = 1;
-                    memset(pars_str[i], 0, 1);
-                    continue;
-                } else if (pars_str[i][j+1] == 'l') {
-                    pars -> opt_l = 1;
-                    memset(pars_str[i], 0, 1);
-                    continue;
-                } else if (pars_str[i][j+1] == 'n') {
-                    pars -> opt_n = 1;
-                    memset(pars_str[i], 0, 1);
-                    continue;
-                } else {
-                    exit_flag = 1;
-                }
-            }
-        }
+void grep(struct opt_grep *pars, int argc, char **argv, char *temp) {
+  char templateL[buff_size] = {0};
+  int cols = 0;
+  if (!pars->opt_f && !pars->opt_e) snprintf(templateL, buff_size, argv[optind++]);
+  if (pars->opt_f) cols = save_patt_file(templateL, temp);
+  if (!pars->opt_f && pars->opt_e) snprintf(templateL, buff_size, temp);
+  if (cols != -1) {
+    int file_c = (argc - optind > 1) ? 1 : 0;
+    for (int i = optind; i < argc; i++) {
+      if (file_c && !pars->opt_h && !pars->opt_l) printf("%s:", argv[i]);
+      grep_file(pars, templateL, argv[i]);
     }
-    for (int j = 1; j < count; j++) {
-        if (helper == 0 && !pars -> opt_e && pars_str[j][0] != '\0') {
-            strcat(template, pars_str[j]);
-            helper++;
-            continue;
-        }
-        FILE *fp = fopen(pars_str[j], "r");
-        if (fp != NULL) {
-            pars -> file_n += 1;
-        }
-    }
-    return exit_flag;
+  }
 }
 
-int file_open(int argc, char **pars_str, struct opt_grep *pars, char *template) {
-    int exit_flag = 0;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(pars_str[i], template) == 0) continue;
-        FILE *fp = fopen(pars_str[i], "r");
-        if (fp == NULL) {
-            exit_flag = 1;
-            continue;
-        } else {
-            fclose(fp);
-            exit_flag = 0;
-            print_file(pars_str, i, pars, template);
-        }
+int save_patt_file(char *template, char *temp) {
+  FILE *fp;
+  fp = fopen(temp, "r");
+  int i = 0;
+  if (fp == NULL) {
+    i = -1;
+  } else {
+    int ch;
+    while ((ch = fgetc(fp)) != EOF) {
+      if (ch == 13 || ch == 10) template[i++] = '|';
+      if (ch != 13 && ch != 10) template[i++] = ch;
     }
-    return exit_flag;
-}
-
-void print_file(char **str, int x, struct opt_grep *pars, char *template) {
-    char *file_str = malloc(1024);
-    char *strend = malloc(1024);
-    FILE *fp = fopen(str[x], "r");
-    regex_t rg;
-    int i = 0, c = 0, len, l_count = 0, reg_flaf = REG_EXTENDED;
-    if (pars -> opt_i) reg_flaf = REG_ICASE;
-    while (fgets(file_str, 256, fp) != NULL) {
-        int proof_co, proof_ex;
-        if (pars -> file_n > 1 && !pars -> opt_c && !pars -> opt_l) printf("%s:", str[x]);
-        if (pars -> opt_n) i++;
-        proof_co = regcomp(&rg, template, reg_flaf);
-        if (proof_co) fprintf(stderr, "regular expression error");
-        proof_ex = regexec(&rg, file_str, 0, NULL, 0);
-        if (pars -> opt_v) {
-            if (proof_ex) {
-                if (pars -> opt_c) {
-                    c++;
-                    regfree(&rg);
-                    memset(file_str, '\0', 1);
-                }
-                if (pars -> opt_l) {
-                    l_count = 1;
-                    regfree(&rg);
-                    break;
-                }
-                if (pars -> opt_n && (!pars -> opt_c && !pars -> opt_l)) printf("%d:", i);
-                printf("%s", file_str);
-                strcat(strend, file_str);
-            }
-        } else if (!proof_ex) {
-            if (pars -> opt_c) {
-                c++;
-                regfree(&rg);
-                memset(file_str, '\0', 1);
-            }
-            if (pars -> opt_l) {
-                l_count = 1;
-                regfree(&rg);
-                break;
-            }
-            if (pars -> opt_n && (!pars -> opt_c && !pars -> opt_l)) printf("%d:", i);
-            printf("%s", file_str);
-            strcat(strend, file_str);
-        }
-        regfree(&rg);
-    }
-    if (pars -> opt_c) {
-        if (pars->file_n > 1) printf("%s:", str[x]);
-        printf("%d\n", c);
-    }
-    if (pars -> opt_l && l_count) printf("%s\n", str[x]);
-    len = strlen(strend);
-    if (!pars -> opt_c && !pars -> opt_l) {
-        if (strend[len-1] != '\n') printf("\n");
-    }
-    free(file_str);
-    free(strend);
+    if (template[i - 1] == '|') template[i - 1] = '\0';
     fclose(fp);
+  }
+  return (i == -1) ? -1 : (i + 1);
+}
+
+void grep_file(struct opt_grep *pars, char *template, char *file) {
+  int cflags = (pars->opt_i) ? REG_ICASE | REG_EXTENDED : REG_EXTENDED;
+  regex_t reg;
+  FILE *fp;
+  fp = fopen(file, "r");
+
+  if (fp == NULL) {
+  } else {
+    regcomp(&reg, template, cflags);
+    filework(pars, fp, reg, file);
+    regfree(&reg);
+    fclose(fp);
+  }
+}
+
+void filework(struct opt_grep *pars, FILE *fp, regex_t reg, char *file) {
+  char text[buff_size] = {0};
+  regmatch_t pmatch[1];
+  int line_matches = 0, nline = 1;
+
+  while (fgets(text, buff_size - 1, fp) != NULL) {
+    int status = regexec(&reg, text, 1, pmatch, 0);
+    int match = 0;
+
+    if (status == 0 && !pars->opt_v) match = 1;
+    if (status == REG_NOMATCH && pars->opt_v) match = 1;
+    if (match && !pars->opt_l && !pars->opt_c && pars->opt_n) printf("%d:", nline);
+    if (match && !pars->opt_l && !pars->opt_c && !pars->opt_o) printf("%s", text);
+
+    if (pars->opt_o && match) {
+      for (int i = pmatch[0].rm_so; i < pmatch[0].rm_eo; i++) {
+        printf("%c", text[i]);
+      }
+      printf("\n");
+    }
+    line_matches += match;
+    nline++;
+  }
+
+  if (pars->opt_l && line_matches > 0) printf("%s\n", file);
+  if (pars->opt_c && !pars->opt_l) printf("%d\n", line_matches);
 }
